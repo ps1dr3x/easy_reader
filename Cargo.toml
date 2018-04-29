@@ -1,0 +1,7 @@
+[package]
+name = "easy_reader"
+version = "0.1.0"
+authors = ["ps1dr3x <michele@federici.tech>"]
+
+[dependencies]
+rand = "0.4.2"
