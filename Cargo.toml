@@ -6,6 +6,7 @@ description = "Move forward, backward or randomly through the lines of huge file
 repository = "https://github.com/ps1dr3x/easy_reader"
 license = "Apache-2.0"
 keywords = ["reader", "lines", "huge", "random", "backwards"]
+readme="README.md"
 
 [dependencies]
 rand = "0.4.2"
