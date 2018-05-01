@@ -1,4 +1,7 @@
-# EasyReader
+# EasyReader &emsp; [![Build Status]][travis]
+
+[Build Status]: https://travis-ci.org/ps1dr3x/easy_reader.svg?branch=master
+[travis]: https://travis-ci.org/ps1dr3x/easy_reader
 
 Move forward, backward or randomly through the lines of huge files. Easily and fastly.
 
