@@ -1,7 +1,9 @@
-# EasyReader &emsp; [![Build Status]][travis]
+# EasyReader
 
-[Build Status]: https://travis-ci.org/ps1dr3x/easy_reader.svg?branch=master
-[travis]: https://travis-ci.org/ps1dr3x/easy_reader
+[![Build Status](https://travis-ci.org/ps1dr3x/easy_reader.svg?branch=master)](https://travis-ci.org/ps1dr3x/easy_reader)
+[![Latest Version](https://img.shields.io/crates/v/easy_reader.svg)](https://crates.io/crates/easy_reader)
+[![Documentation](https://docs.rs/easy_reader/badge.svg)](https://docs.rs/easy_reader)
+[![Rustc Version](https://img.shields.io/badge/rustc-1.25+-green.svg)](https://blog.rust-lang.org/2018/03/29/Rust-1.25.html)
 
 Move forward, backward or randomly through the lines of huge files. Easily and fastly.
 
