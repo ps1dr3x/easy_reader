@@ -28,11 +28,12 @@
 //!
 //!     println!("First line: {}", easy_reader.next_line().unwrap());
 //!     println!("Also first line: {}", easy_reader.prev_line().unwrap());
+//!     println!("Second line: {}", easy_reader.next_line().unwrap());
 //!     println!("Random line: {}", easy_reader.random_line().unwrap());
 //!
 //!     // Iteration through the entire file (reverse)
 //!     easy_reader.from_eof();
-//!     while let Some(line) = easy_reader.prev_line() {
+//!     while let Ok(line) = easy_reader.prev_line() {
 //!         println!("{}", line);
 //!     }
 //! 
@@ -65,9 +66,12 @@
 
 extern crate rand;
 
-use std::io::prelude::*;
-use std::io::{ Error, SeekFrom };
-use std::io::ErrorKind::UnexpectedEof;
+use std::io::{
+    prelude::*,
+    Error,
+    SeekFrom,
+    ErrorKind
+};
 use std::fs::File;
 use rand::Rng;
 
@@ -82,7 +86,7 @@ pub struct EasyReader {
 impl EasyReader {
     pub fn new(file: File) -> Result<EasyReader, Error> {
         let file_size: u64 = file.metadata().unwrap().len();
-        if file_size == 0 { return Err(Error::new(UnexpectedEof, "Empty file")) }
+        if file_size == 0 { return Err(Error::new(ErrorKind::UnexpectedEof, "Empty file")) }
 
         Ok(EasyReader {
             file: file,
@@ -100,51 +104,54 @@ impl EasyReader {
         self
     }
 
-    pub fn next_line(&mut self) -> Option<String> {
-        if self.current_offset == self.file.metadata().unwrap().len() as usize {
-            return None
+    pub fn next_line(&mut self) -> Result<String, Error> {
+        if self.current_offset == self.file.metadata()?.len() as usize {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "EOF reached"))
         }
 
-        let start_line_offset: usize = self.find_start_line();
+        let start_line_offset = self.find_start_line()?;
         self.current_offset = start_line_offset;
-        let end_line_offset: usize = self.find_end_line();
+        let end_line_offset = self.find_end_line()?;
         self.current_offset = end_line_offset;
 
-        self.read_line(start_line_offset, end_line_offset)
+        let line = self.read_line(start_line_offset, end_line_offset)?;
+        Ok(line)
     }
 
-    pub fn prev_line(&mut self) -> Option<String> {
+    pub fn prev_line(&mut self) -> Result<String, Error> {
         if self.current_offset == 0 {
-            return None
+            return Err(Error::new(ErrorKind::UnexpectedEof, "BOF reached"))
         }
 
-        let start_line_offset: usize = self.find_start_line();
+        let start_line_offset = self.find_start_line()?;
         self.current_offset = start_line_offset;
-        let end_line_offset: usize = self.find_end_line();
+        let end_line_offset = self.find_end_line()?;
 
-        self.read_line(start_line_offset, end_line_offset)
+        let line = self.read_line(start_line_offset, end_line_offset)?;
+        Ok(line)
     }
 
-    pub fn random_line(&mut self) -> Option<String> {
+    pub fn random_line(&mut self) -> Result<String, Error> {
         let file_size: usize = self.file.metadata().unwrap().len() as usize;
 
         self.current_offset = rand::thread_rng().gen_range(0, file_size);
 
-        let start_line_offset: usize = self.find_start_line();
+        let start_line_offset: usize = self.find_start_line()?;
         self.current_offset = start_line_offset;
-        let end_line_offset: usize = self.find_end_line();
+        let end_line_offset: usize = self.find_end_line()?;
         self.current_offset = end_line_offset;
 
-        self.read_line(start_line_offset, end_line_offset)
+        let line = self.read_line(start_line_offset, end_line_offset)?;
+        Ok(line)
     }
 
-    fn find_start_line(&mut self) -> usize {
+    fn find_start_line(&mut self) -> Result<usize, Error> {
         let mut start_line_offset: usize = self.current_offset;
 
         loop {
             if start_line_offset == 0 { break }
 
-            let byte: u8 = self.read_byte(start_line_offset);
+            let byte: u8 = self.read_byte(start_line_offset)?;
 
             if (byte == CR_BYTE || byte == LF_BYTE) && (start_line_offset == self.current_offset) {
                 // Reading forward
@@ -163,17 +170,17 @@ impl EasyReader {
             }
         }
 
-        start_line_offset
+        Ok(start_line_offset)
     }
 
-    fn find_end_line(&mut self) -> usize {
-        let file_size: usize = self.file.metadata().unwrap().len() as usize;
+    fn find_end_line(&mut self) -> Result<usize, Error> {
+        let file_size: usize = self.file.metadata()?.len() as usize;
         let mut end_line_offset: usize = self.current_offset;
 
         loop {
             if end_line_offset == file_size { break }
 
-            let byte: u8 = self.read_byte(end_line_offset);
+            let byte: u8 = self.read_byte(end_line_offset)?;
 
             if (byte == CR_BYTE && (end_line_offset == self.current_offset)) ||
                 (byte == LF_BYTE && (end_line_offset == (self.current_offset + 1))) ||
@@ -184,22 +191,28 @@ impl EasyReader {
             }
         }
 
-        end_line_offset
+        Ok(end_line_offset)
     }
 
-    fn read_byte(&mut self, offset: usize) -> u8 {
+    fn read_byte(&mut self, offset: usize) -> Result<u8, Error> {
         let mut buffer: [u8; 1] = [0];
-        self.file.seek(SeekFrom::Start(offset as u64)).unwrap();
-        self.file.read(&mut buffer[..]).unwrap();
-        buffer[0]
+        self.file.seek(SeekFrom::Start(offset as u64))?;
+        self.file.read(&mut buffer)?;
+        Ok(buffer[0])
     }
 
-    fn read_line(&mut self, start_line_offset: usize, end_line_offset: usize) -> Option<String> {
+    fn read_line(&mut self, start_line_offset: usize, end_line_offset: usize) -> Result<String, Error> {
         let mut buffer = vec![0; end_line_offset - start_line_offset];
-        self.file.seek(SeekFrom::Start(start_line_offset as u64)).unwrap();
-        self.file.read(&mut buffer[..]).unwrap();
+        self.file.seek(SeekFrom::Start(start_line_offset as u64))?;
+        self.file.read(&mut buffer)?;
 
-        Some(String::from_utf8(buffer).unwrap())
+        let line = String::from_utf8(buffer)
+            .map_err(|err| {
+                println!("Error {}", err);
+                Error::new(std::io::ErrorKind::Other, "TODO!")
+            })?;
+
+        Ok(line)
     }
 }
 
@@ -220,8 +233,10 @@ mod tests {
         let file: File = File::open("resources/one-line-file").unwrap();
         let mut easy_reader: EasyReader = EasyReader::new(file).unwrap();
 
-        assert!(easy_reader.next_line().unwrap().eq("A"), "The sole line of one-line-file should be: A");
-        assert!(easy_reader.next_line().is_none(), "There is no other lines in one-line-file, this should be: None");
+        assert!(easy_reader.next_line().unwrap().eq("A"), "The sole line of one.unwrap()-line-file should be: A");
+        assert!(easy_reader.next_line().is_err(), "There is no other lines in one-line-file, this should be: Err(Error::new(ErrorKind::UnexpectedEof, \"EOF reached\"))");
+        assert!(easy_reader.prev_line().unwrap().eq("A"), "The sole line of one.unwrap()-line-file should be: A");
+        assert!(easy_reader.prev_line().is_err(), "There is no other lines in one-line-file, this should be: Err(Error::new(ErrorKind::UnexpectedEof, \"BOF reached\"))");
     }
 
     #[test]
@@ -273,14 +288,14 @@ mod tests {
         let file: File = File::open("resources/test-file-lf").unwrap();
         let mut easy_reader: EasyReader = EasyReader::new(file).unwrap();
 
-        while let Some(line) = easy_reader.next_line() {
+        while let Ok(line) = easy_reader.next_line() {
             assert!(!line.is_empty(), "Empty line, but test-file-lf does not contain empty lines");
         }
         assert!(easy_reader.current_offset == easy_reader.file.metadata().unwrap().len() as usize, "After the \"while next-line\" iteration the offset should be at the EOF");
         assert!(easy_reader.prev_line().unwrap().eq("EEEE EEEE"), "The first line from the EOF should be: EEEE EEEE");
 
         easy_reader.from_eof();
-        while let Some(line) = easy_reader.prev_line() {
+        while let Ok(line) = easy_reader.prev_line() {
             assert!(!line.is_empty(), "Empty line, but test-file-lf does not contain empty lines");
         }
         assert!(easy_reader.current_offset == 0, "After the \"while prev-line\" iteration the offset should be at the BOF");
