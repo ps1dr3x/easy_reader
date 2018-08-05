@@ -1,6 +1,6 @@
 [package]
 name = "easy_reader"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Michele Federici (@ps1dr3x) <michele@federici.tech>"]
 description = "Move forward, backward or randomly through the lines of huge files. Easily and fastly."
 repository = "https://github.com/ps1dr3x/easy_reader"
