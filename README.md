@@ -25,11 +25,12 @@ fn main() {
 
     println!("First line: {}", easy_reader.next_line().unwrap());
     println!("Also first line: {}", easy_reader.prev_line().unwrap());
+    println!("Second line: {}", easy_reader.next_line().unwrap());
     println!("Random line: {}", easy_reader.random_line().unwrap());
 
     // Iteration through the entire file (reverse)
     easy_reader.from_eof();
-    while let Some(line) = easy_reader.prev_line() {
+    while let Ok(line) = easy_reader.prev_line() {
         println!("{}", line);
     }
 
