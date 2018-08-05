@@ -78,6 +78,13 @@ use rand::Rng;
 const CR_BYTE: u8 = '\r' as u8;
 const LF_BYTE: u8 = '\n' as u8;
 
+#[derive(PartialEq)]
+enum ReadMode {
+    Prev,
+    Next,
+    Random
+}
+
 pub struct EasyReader {
     file: File,
     current_offset: usize
@@ -105,43 +112,53 @@ impl EasyReader {
     }
 
     pub fn next_line(&mut self) -> Result<String, Error> {
-        if self.current_offset == self.file.metadata()?.len() as usize {
-            return Err(Error::new(ErrorKind::UnexpectedEof, "EOF reached"))
-        }
-
-        let start_line_offset = self.find_start_line()?;
-        self.current_offset = start_line_offset;
-        let end_line_offset = self.find_end_line()?;
-        self.current_offset = end_line_offset;
-
-        let line = self.read_line(start_line_offset, end_line_offset)?;
-        Ok(line)
+        self.read_line(ReadMode::Next)
     }
 
     pub fn prev_line(&mut self) -> Result<String, Error> {
-        if self.current_offset == 0 {
-            return Err(Error::new(ErrorKind::UnexpectedEof, "BOF reached"))
+        self.read_line(ReadMode::Prev)
+    }
+
+    pub fn random_line(&mut self) -> Result<String, Error> {
+        self.read_line(ReadMode::Random)
+    }
+
+    fn read_line(&mut self, mode: ReadMode) -> Result<String, Error> {
+        match mode {
+            ReadMode::Prev => {
+                if self.current_offset == 0 {
+                    return Err(Error::new(ErrorKind::UnexpectedEof, "BOF reached"))
+                }
+            },
+            ReadMode::Next => {
+                if self.current_offset == self.file.metadata()?.len() as usize {
+                    return Err(Error::new(ErrorKind::UnexpectedEof, "EOF reached"))
+                }
+            },
+            ReadMode::Random => {
+                let file_size = self.file.metadata().unwrap().len() as usize;
+                self.current_offset = rand::thread_rng().gen_range(0, file_size);
+            }
         }
 
         let start_line_offset = self.find_start_line()?;
         self.current_offset = start_line_offset;
         let end_line_offset = self.find_end_line()?;
 
-        let line = self.read_line(start_line_offset, end_line_offset)?;
-        Ok(line)
-    }
+        if mode != ReadMode::Prev {
+            self.current_offset = end_line_offset;
+        }
 
-    pub fn random_line(&mut self) -> Result<String, Error> {
-        let file_size: usize = self.file.metadata().unwrap().len() as usize;
+        let mut buffer = vec![0; end_line_offset - start_line_offset];
+        self.file.seek(SeekFrom::Start(start_line_offset as u64))?;
+        self.file.read(&mut buffer)?;
 
-        self.current_offset = rand::thread_rng().gen_range(0, file_size);
+        let line = String::from_utf8(buffer)
+            .map_err(|err| {
+                println!("Error {}", err);
+                Error::new(std::io::ErrorKind::Other, "TODO!")
+            })?;
 
-        let start_line_offset: usize = self.find_start_line()?;
-        self.current_offset = start_line_offset;
-        let end_line_offset: usize = self.find_end_line()?;
-        self.current_offset = end_line_offset;
-
-        let line = self.read_line(start_line_offset, end_line_offset)?;
         Ok(line)
     }
 
@@ -199,20 +216,6 @@ impl EasyReader {
         self.file.seek(SeekFrom::Start(offset as u64))?;
         self.file.read(&mut buffer)?;
         Ok(buffer[0])
-    }
-
-    fn read_line(&mut self, start_line_offset: usize, end_line_offset: usize) -> Result<String, Error> {
-        let mut buffer = vec![0; end_line_offset - start_line_offset];
-        self.file.seek(SeekFrom::Start(start_line_offset as u64))?;
-        self.file.read(&mut buffer)?;
-
-        let line = String::from_utf8(buffer)
-            .map_err(|err| {
-                println!("Error {}", err);
-                Error::new(std::io::ErrorKind::Other, "TODO!")
-            })?;
-
-        Ok(line)
     }
 }
 
