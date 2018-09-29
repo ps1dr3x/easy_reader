@@ -12,7 +12,9 @@
                     "--lib"
                 ]
             },
-            "args": [],
+            "args": [
+                "--nocapture"
+            ],
             "cwd": "${workspaceFolder}"
         }
     ]
