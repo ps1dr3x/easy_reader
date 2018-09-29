@@ -17,29 +17,37 @@ Mainly because with Rust (currently) there isn't an easy way to read huge files 
 extern crate easy_reader;
 
 use easy_reader::EasyReader;
-use std::fs::File;
+use std::{
+    fs::File,
+    io::{
+        self,
+        Error
+    }
+};
 
-fn main() {
-    let file = File::open("resources/test-file-lf").unwrap();
-    let mut easy_reader = EasyReader::new(file).unwrap();
+fn easy() -> Result<(), Error> {
+    let file = File::open("resources/test-file-lf")?;
+    let mut easy_reader = EasyReader::new(file)?;
 
-    println!("First line: {}", easy_reader.next_line().unwrap());
-    println!("Second line: {}", easy_reader.next_line().unwrap());
-    println!("First line: {}", easy_reader.prev_line().unwrap());
-    println!("Random line: {}", easy_reader.random_line().unwrap());
+    println!("First line: {}", easy_reader.next_line()?.unwrap());
+    println!("Second line: {}", easy_reader.next_line()?.unwrap());
+    println!("First line: {}", easy_reader.prev_line()?.unwrap());
+    println!("Random line: {}", easy_reader.random_line()?.unwrap());
 
     // Iteration through the entire file (reverse)
     easy_reader.from_eof();
-    while let Ok(line) = easy_reader.prev_line() {
+    while let Some(line) = easy_reader.prev_line()? {
         println!("{}", line);
     }
 
     // You can always start/restart reading from the end of file (EOF)
     easy_reader.from_eof();
-    println!("Last line: {}", easy_reader.prev_line().unwrap());
+    println!("Last line: {}", easy_reader.prev_line()?.unwrap());
     // Or the begin of file (BOF)
     easy_reader.from_bof();
-    println!("First line: {}", easy_reader.next_line().unwrap());
+    println!("First line: {}", easy_reader.next_line()?.unwrap());
+
+    Ok(())
 }
 ```
 
@@ -49,14 +57,20 @@ fn main() {
 extern crate easy_reader;
 
 use easy_reader::EasyReader;
-use std::fs::File;
+use std::{
+    fs::File,
+    io::{
+        self,
+        Error
+    }
+};
 
-fn main() {
-    let file = File::open("resources/test-file-lf").unwrap();
-    let mut easy_reader = EasyReader::new(file).unwrap();
+fn easy() -> Result<(), Error> {
+    let file = File::open("resources/test-file-lf")?;
+    let mut easy_reader = EasyReader::new(file)?;
 
     loop {
-        println!("{}", easy_reader.random_line().unwrap());
+        println!("{}", easy_reader.random_line()?.unwrap());
     }
 }
 ```
