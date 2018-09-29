@@ -23,12 +23,12 @@
 //! use std::fs::File;
 //!
 //! fn main() {
-//!     let file: File = File::open("resources/test-file-lf").unwrap();
-//!     let mut easy_reader: EasyReader = EasyReader::new(file).unwrap();
+//!     let file = File::open("resources/test-file-lf").unwrap();
+//!     let mut easy_reader = EasyReader::new(file).unwrap();
 //!
 //!     println!("First line: {}", easy_reader.next_line().unwrap());
-//!     println!("Also first line: {}", easy_reader.prev_line().unwrap());
 //!     println!("Second line: {}", easy_reader.next_line().unwrap());
+//!     println!("First line: {}", easy_reader.prev_line().unwrap());
 //!     println!("Random line: {}", easy_reader.random_line().unwrap());
 //!
 //!     // Iteration through the entire file (reverse)
@@ -55,8 +55,8 @@
 //! use std::fs::File;
 //!
 //! fn main() {
-//!     let file: File = File::open("resources/test-file-lf").unwrap();
-//!     let mut easy_reader: EasyReader = EasyReader::new(file).unwrap();
+//!     let file = File::open("resources/test-file-lf").unwrap();
+//!     let mut easy_reader = EasyReader::new(file).unwrap();
 //!
 //!     loop {
 //!         println!("{}", easy_reader.random_line().unwrap());
@@ -66,57 +66,71 @@
 
 extern crate rand;
 
-use std::io::{
-    prelude::*,
-    Error,
-    SeekFrom,
-    ErrorKind
+use std::{
+    io::{
+        prelude::*,
+        Error,
+        SeekFrom,
+        ErrorKind
+    },
+    fs::File
 };
-use std::fs::File;
 use rand::Rng;
 
+const CHUNK_SIZE: usize = 10;
 const CR_BYTE: u8 = '\r' as u8;
 const LF_BYTE: u8 = '\n' as u8;
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 enum ReadMode {
     Prev,
+    Current,
     Next,
     Random
 }
 
 pub struct EasyReader {
     file: File,
-    current_offset: usize
+    file_size: usize,
+    current_start_line_offset: usize,
+    current_end_line_offset: usize
 }
 
 impl EasyReader {
     pub fn new(file: File) -> Result<EasyReader, Error> {
-        let file_size: u64 = file.metadata().unwrap().len();
+        let file_size = file.metadata()?.len() as usize;
         if file_size == 0 { return Err(Error::new(ErrorKind::UnexpectedEof, "Empty file")) }
 
         Ok(EasyReader {
             file: file,
-            current_offset: 0
+            file_size: file_size,
+            current_start_line_offset: 0,
+            current_end_line_offset: 0
         })
     }
 
     pub fn from_bof(&mut self) -> &mut EasyReader {
-        self.current_offset = 0;
+        self.current_start_line_offset = 0;
+        self.current_end_line_offset = 0;
         self
     }
 
     pub fn from_eof(&mut self) -> &mut EasyReader {
-        self.current_offset = self.file.metadata().unwrap().len() as usize;
+        self.current_start_line_offset = self.file_size;
+        self.current_end_line_offset = self.file_size;
         self
-    }
-
-    pub fn next_line(&mut self) -> Result<String, Error> {
-        self.read_line(ReadMode::Next)
     }
 
     pub fn prev_line(&mut self) -> Result<String, Error> {
         self.read_line(ReadMode::Prev)
+    }
+
+    pub fn current_line(&mut self) -> Result<String, Error> {
+        self.read_line(ReadMode::Current)
+    }
+
+    pub fn next_line(&mut self) -> Result<String, Error> {
+        self.read_line(ReadMode::Next)
     }
 
     pub fn random_line(&mut self) -> Result<String, Error> {
@@ -126,106 +140,195 @@ impl EasyReader {
     fn read_line(&mut self, mode: ReadMode) -> Result<String, Error> {
         match mode {
             ReadMode::Prev => {
-                if self.current_offset == 0 {
+                if self.current_start_line_offset == 0 {
                     return Err(Error::new(ErrorKind::UnexpectedEof, "BOF reached"))
+                }
+                self.current_end_line_offset = self.current_start_line_offset;
+            },
+            ReadMode::Current => {
+                if self.current_start_line_offset == self.current_end_line_offset {
+                    if self.current_start_line_offset == self.file_size {
+                        self.current_start_line_offset = self.find_start_line(ReadMode::Prev)?;
+                    }
+                    if self.current_end_line_offset == 0 {
+                        self.current_end_line_offset = self.find_end_line()?;
+                    }
                 }
             },
             ReadMode::Next => {
-                if self.current_offset == self.file.metadata()?.len() as usize {
+                if self.current_end_line_offset == self.file_size {
                     return Err(Error::new(ErrorKind::UnexpectedEof, "EOF reached"))
                 }
+                self.current_start_line_offset = self.current_end_line_offset;
             },
             ReadMode::Random => {
-                let file_size = self.file.metadata().unwrap().len() as usize;
-                self.current_offset = rand::thread_rng().gen_range(0, file_size);
+                self.current_start_line_offset = rand::thread_rng().gen_range(0, self.file_size);
             }
         }
 
-        let start_line_offset = self.find_start_line()?;
-        self.current_offset = start_line_offset;
-        let end_line_offset = self.find_end_line()?;
-
-        if mode != ReadMode::Prev {
-            self.current_offset = end_line_offset;
+        if mode != ReadMode::Current {
+            self.current_start_line_offset = self.find_start_line(mode.clone())?;
+            self.current_end_line_offset = self.find_end_line()?;
         }
 
-        let mut buffer = vec![0; end_line_offset - start_line_offset];
-        self.file.seek(SeekFrom::Start(start_line_offset as u64))?;
-        self.file.read(&mut buffer)?;
+        let offset = self.current_start_line_offset;
+        let line_length = self.current_end_line_offset - self.current_start_line_offset;
+        let buffer = self.read_bytes(offset, line_length)?;
 
         let line = String::from_utf8(buffer)
             .map_err(|err| {
-                println!("Error {}", err);
-                Error::new(std::io::ErrorKind::Other, "TODO!")
+                Error::new(
+                    ErrorKind::Other,
+                    format!(
+                        "The line starting at byte: {} and ending at byte: {} is not valid UTF-8. Conversion error: {}",
+                        self.current_start_line_offset,
+                        self.current_end_line_offset,
+                        err
+                    )
+                )
             })?;
 
         Ok(line)
     }
 
-    fn find_start_line(&mut self) -> Result<usize, Error> {
-        let mut start_line_offset: usize = self.current_offset;
+    fn find_start_line(&mut self, mode: ReadMode) -> Result<usize, Error> {
+        let mut new_start_line_offset = self.current_start_line_offset;
 
+        let mut n_chunks = 0;
         loop {
-            if start_line_offset == 0 { break }
+            if new_start_line_offset == 0 { break; }
 
-            let byte: u8 = self.read_byte(start_line_offset)?;
+            let mut found = false;
+            match mode {
+                ReadMode::Prev | ReadMode::Random => {
+                    let mut margin = 0;
+                    let from = {
+                        if new_start_line_offset < CHUNK_SIZE {
+                            margin = CHUNK_SIZE - new_start_line_offset;
+                            0
+                        } else {
+                            new_start_line_offset - CHUNK_SIZE
+                        }
+                    };
 
-            if (byte == CR_BYTE || byte == LF_BYTE) && (start_line_offset == self.current_offset) {
-                // Reading forward
-                start_line_offset += 1;
-            } else if byte != LF_BYTE && byte != CR_BYTE && start_line_offset == (self.current_offset + 1) {
-                // Forward reading break condition
-                break;
-            } else if byte == LF_BYTE && start_line_offset == (self.current_offset - 1) ||
-                byte != LF_BYTE {
-                // Reading backward
-                start_line_offset -= 1;
-            } else {
-                // Backward reading break condition
-                start_line_offset += 1;
-                break;
+                    let mut chunk = self.read_chunk(from)?;
+                    chunk.reverse();
+
+                    for i in 0..CHUNK_SIZE {
+                        if i < margin { continue; }
+                        if new_start_line_offset == 0 {
+                            found = true;
+                            break;
+                        } else {
+                            if n_chunks == 0 &&
+                              self.current_start_line_offset == new_start_line_offset &&
+                              mode != ReadMode::Random {
+                                // We've not moved yet
+                                new_start_line_offset -= 1;
+                                continue;
+                            }
+
+                            if chunk[i] == LF_BYTE {
+                                found = true;
+                            }
+                        }
+
+                        if found { break; }
+                        new_start_line_offset -= 1;
+                    }
+                },
+                ReadMode::Current => (),
+                ReadMode::Next => {
+                    let mut chunk = self.read_chunk(new_start_line_offset)?;
+
+                    for i in 0..CHUNK_SIZE {
+                        if new_start_line_offset >= self.file_size - 1 {
+                            return Err(Error::new(ErrorKind::UnexpectedEof, "EOF reached"))
+                        }
+
+                        if chunk[i] == LF_BYTE {
+                            found = true;
+                        }
+
+                        new_start_line_offset += 1;
+                        if found { break; }
+                    }
+                }
             }
+
+            if found { break; }
+            n_chunks += 1;
         }
 
-        Ok(start_line_offset)
+        Ok(new_start_line_offset)
     }
 
     fn find_end_line(&mut self) -> Result<usize, Error> {
-        let file_size: usize = self.file.metadata()?.len() as usize;
-        let mut end_line_offset: usize = self.current_offset;
+        let mut new_end_line_offset = self.current_start_line_offset;
 
         loop {
-            if end_line_offset == file_size { break }
+            if new_end_line_offset == self.file_size { break }
 
-            let byte: u8 = self.read_byte(end_line_offset)?;
+            let chunk = self.read_chunk(new_end_line_offset)?;
 
-            if (byte == CR_BYTE && (end_line_offset == self.current_offset)) ||
-                (byte == LF_BYTE && (end_line_offset == (self.current_offset + 1))) ||
-                (byte != LF_BYTE && byte != CR_BYTE) {
-                end_line_offset += 1;
-            } else {
-                break;
+            let mut found = false;
+            for i in 0..CHUNK_SIZE {
+                if new_end_line_offset == self.file_size {
+                    found = true;
+                    break;
+                } else if chunk[i] == LF_BYTE {
+                    // Handle CRLF files
+                    if i > 0 {
+                        if chunk[i - 1] == CR_BYTE {
+                            new_end_line_offset -= 1;
+                        }
+                    } else {
+                        if new_end_line_offset < self.file_size {
+                            let next_byte = self.read_bytes(new_end_line_offset - 1, 1)?[0];
+                            if next_byte == CR_BYTE {
+                                new_end_line_offset -= 1;
+                            }
+                        }
+                    }
+                    found = true;
+                    break;
+                } else {
+                    new_end_line_offset += 1;
+                }
             }
+            if found { break; }
         }
 
-        Ok(end_line_offset)
+        Ok(new_end_line_offset)
     }
 
-    fn read_byte(&mut self, offset: usize) -> Result<u8, Error> {
-        let mut buffer: [u8; 1] = [0];
+    fn read_chunk(&mut self, offset: usize) -> Result<[u8; CHUNK_SIZE], Error> {
+        let mut buffer: [u8; CHUNK_SIZE] = [0; CHUNK_SIZE];
         self.file.seek(SeekFrom::Start(offset as u64))?;
         self.file.read(&mut buffer)?;
-        Ok(buffer[0])
+        Ok(buffer)
+    }
+
+    fn read_bytes(&mut self, offset: usize, bytes: usize) -> Result<Vec<u8>, Error> {
+        let mut buffer = vec![0; bytes];
+        self.file.seek(SeekFrom::Start(offset as u64))?;
+        self.file.read(&mut buffer[..])?;
+        Ok(buffer)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{ Instant, Duration };
+
+    fn duration_as_millis(d: Duration) -> f64 {
+        d.as_secs() as f64 * 1000. + d.subsec_nanos() as f64 / 1e6
+    }
 
     #[test]
     fn test_empty_file() {
-        let file: File = File::open("resources/empty-file").unwrap();
+        let file = File::open("resources/empty-file").unwrap();
         let easy_reader: Result<EasyReader, Error> = EasyReader::new(file);
 
         assert!(easy_reader.is_err(), "Empty file, but the constructor hasn't returned an Error");
@@ -233,75 +336,143 @@ mod tests {
 
     #[test]
     fn test_one_line_file() {
-        let file: File = File::open("resources/one-line-file").unwrap();
-        let mut easy_reader: EasyReader = EasyReader::new(file).unwrap();
+        let file = File::open("resources/one-line-file").unwrap();
+        let mut easy_reader = EasyReader::new(file).unwrap();
 
-        assert!(easy_reader.next_line().unwrap().eq("A"), "The sole line of one.unwrap()-line-file should be: A");
+        assert!(easy_reader.next_line().unwrap().eq("A"), "The single line of one-line-file should be: A");
         assert!(easy_reader.next_line().is_err(), "There is no other lines in one-line-file, this should be: Err(Error::new(ErrorKind::UnexpectedEof, \"EOF reached\"))");
-        assert!(easy_reader.prev_line().unwrap().eq("A"), "The sole line of one.unwrap()-line-file should be: A");
         assert!(easy_reader.prev_line().is_err(), "There is no other lines in one-line-file, this should be: Err(Error::new(ErrorKind::UnexpectedEof, \"BOF reached\"))");
+        assert!(easy_reader.current_line().unwrap().eq("A"), "The single line of one-line-file should be: A");
+        
+        easy_reader.from_bof();
+        assert!(easy_reader.next_line().unwrap().eq("A"), "The single line of one-line-file from the bof should be: A");
+
+        easy_reader.from_eof();
+        assert!(easy_reader.prev_line().unwrap().eq("A"), "The single line of one-line-file from the eof should be: A");
+
+        for _i in 1..10 {
+            assert!(easy_reader.random_line().unwrap().eq("A"), "The single line of one-line-file should be: A (test: 10 random lines)");
+        }
     }
 
     #[test]
     fn test_move_through_lines() {
-        let file: File = File::open("resources/test-file-lf").unwrap();
-        let mut easy_reader: EasyReader = EasyReader::new(file).unwrap();
+        let file = File::open("resources/test-file-lf").unwrap();
+        let mut easy_reader = EasyReader::new(file).unwrap();
 
         easy_reader.from_eof();
-        assert!(easy_reader.prev_line().unwrap().eq("EEEE EEEE"), "[test-file-lf] The first line from the EOF should be: EEEE EEEE");
-        assert!(easy_reader.prev_line().unwrap().eq("DDDD DDDD"), "[test-file-lf] The second line from the EOF should be: DDDD DDDD");
-        assert!(easy_reader.prev_line().unwrap().eq("CCCC CCCC"), "[test-file-lf] The third line from the EOF should be: CCCC CCCC");
+        assert!(easy_reader.prev_line().unwrap().eq("EEEE  EEEEE  EEEE  EEEEE"), "[test-file-lf] The first line from the EOF should be: EEEE  EEEEE  EEEE  EEEEE");
+        assert!(easy_reader.prev_line().unwrap().eq("DDDD  DDDDD DD DDD DDD DD"), "[test-file-lf] The second line from the EOF should be: DDDD  DDDDD DD DDD DDD DD");
+        assert!(easy_reader.prev_line().unwrap().eq("CCCC  CCCCC"), "[test-file-lf] The third line from the EOF should be: CCCC  CCCCC");
+        assert!(easy_reader.current_line().unwrap().eq("CCCC  CCCCC"), "[test-file-lf] The third line from the EOF should be: CCCC  CCCCC");
+        assert!(easy_reader.next_line().unwrap().eq("DDDD  DDDDD DD DDD DDD DD"), "[test-file-lf] The second line from the EOF should be: DDDD  DDDDD DD DDD DDD DD");
 
         easy_reader.from_bof();
         assert!(easy_reader.next_line().unwrap().eq("AAAA AAAA"), "[test-file-lf] The first line from the BOF should be: AAAA AAAA");
-        assert!(easy_reader.next_line().unwrap().eq("BBBB BBBB"), "[test-file-lf] The second line from the BOF should be: BBBB BBBB");
-        assert!(easy_reader.next_line().unwrap().eq("CCCC CCCC"), "[test-file-lf] The third line from the BOF should be: CCCC CCCC");
+        assert!(easy_reader.next_line().unwrap().eq("B B BB BBB"), "[test-file-lf] The second line from the BOF should be: B B BB BBB");
+        assert!(easy_reader.next_line().unwrap().eq("CCCC  CCCCC"), "[test-file-lf] The third line from the BOF should be: CCCC  CCCCC");
+        assert!(easy_reader.current_line().unwrap().eq("CCCC  CCCCC"), "[test-file-lf] The third line from the EOF should be: CCCC  CCCCC");
+        assert!(easy_reader.prev_line().unwrap().eq("B B BB BBB"), "[test-file-lf] The second line from the BOF should be: B B BB BBB");
 
-        let file: File = File::open("resources/test-file-crlf").unwrap();
-        let mut easy_reader: EasyReader = EasyReader::new(file).unwrap();
+        let file = File::open("resources/test-file-crlf").unwrap();
+        let mut easy_reader = EasyReader::new(file).unwrap();
 
         easy_reader.from_eof();
-        assert!(easy_reader.prev_line().unwrap().eq("EEEE EEEE"), "[test-file-crlf] The first line from the EOF should be: EEEE EEEE");
-        assert!(easy_reader.prev_line().unwrap().eq("DDDD DDDD"), "[test-file-crlf] The second line from the EOF should be: DDDD DDDD");
-        assert!(easy_reader.prev_line().unwrap().eq("CCCC CCCC"), "[test-file-crlf] The third line from the EOF should be: CCCC CCCC");
+        assert!(easy_reader.prev_line().unwrap().eq("EEEE  EEEEE  EEEE  EEEEE"), "[test-file-crlf] The first line from the EOF should be: EEEE  EEEEE  EEEE  EEEEE");
+        assert!(easy_reader.prev_line().unwrap().eq("DDDD  DDDDD DD DDD DDD DD"), "[test-file-crlf] The second line from the EOF should be: DDDD  DDDDD DD DDD DDD DD");
+        assert!(easy_reader.prev_line().unwrap().eq("CCCC  CCCCC"), "[test-file-crlf] The third line from the EOF should be: CCCC  CCCCC");
+        assert!(easy_reader.current_line().unwrap().eq("CCCC  CCCCC"), "[test-file-crlf] The third line from the EOF should be: CCCC  CCCCC");
+        assert!(easy_reader.next_line().unwrap().eq("DDDD  DDDDD DD DDD DDD DD"), "[test-file-crlf] The second line from the EOF should be: DDDD  DDDDD DD DDD DDD DD");
 
         easy_reader.from_bof();
         assert!(easy_reader.next_line().unwrap().eq("AAAA AAAA"), "[test-file-crlf] The first line from the BOF should be: AAAA AAAA");
-        assert!(easy_reader.next_line().unwrap().eq("BBBB BBBB"), "[test-file-crlf] The second line from the BOF should be: BBBB BBBB");
-        assert!(easy_reader.next_line().unwrap().eq("CCCC CCCC"), "[test-file-crlf] The third line from the BOF should be: CCCC CCCC");
+        assert!(easy_reader.next_line().unwrap().eq("B B BB BBB"), "[test-file-crlf] The second line from the BOF should be: B B BB BBB");
+        assert!(easy_reader.next_line().unwrap().eq("CCCC  CCCCC"), "[test-file-crlf] The third line from the BOF should be: CCCC  CCCCC");
+        assert!(easy_reader.current_line().unwrap().eq("CCCC  CCCCC"), "[test-file-crlf] The third line from the EOF should be: CCCC  CCCCC");
+        assert!(easy_reader.prev_line().unwrap().eq("B B BB BBB"), "[test-file-crlf] The second line from the BOF should be: B B BB BBB");
     }
 
     #[test]
     fn test_random_line() {
-        let file: File = File::open("resources/test-file-lf").unwrap();
-        let mut easy_reader: EasyReader = EasyReader::new(file).unwrap();
+        let file = File::open("resources/test-file-lf").unwrap();
+        let mut easy_reader = EasyReader::new(file).unwrap();
 
-        let random_line: String = easy_reader.random_line().unwrap();
-        assert!(!random_line.is_empty(), "Empty line, but test-file-lf does not contain empty lines");
+        for _i in 0..100 {
+            let random_line = easy_reader.random_line().unwrap();
+            assert!(!random_line.is_empty(), "Empty line, but test-file-lf does not contain empty lines");
+        }
 
-        let file: File = File::open("resources/test-file-crlf").unwrap();
-        let mut easy_reader: EasyReader = EasyReader::new(file).unwrap();
+        let file = File::open("resources/test-file-crlf").unwrap();
+        let mut easy_reader = EasyReader::new(file).unwrap();
 
-        let random_line: String = easy_reader.random_line().unwrap();
-        assert!(!random_line.is_empty(), "Empty line, but test-file-crlf does not contain empty lines");
+        for _i in 0..100 {
+            let random_line = easy_reader.random_line().unwrap();
+            assert!(!random_line.is_empty(), "Empty line, but test-file-crlf does not contain empty lines");
+        }
     }
 
     #[test]
     fn test_iterations() {
-        let file: File = File::open("resources/test-file-lf").unwrap();
-        let mut easy_reader: EasyReader = EasyReader::new(file).unwrap();
+        let file = File::open("resources/test-file-lf").unwrap();
+        let mut easy_reader = EasyReader::new(file).unwrap();
 
         while let Ok(line) = easy_reader.next_line() {
             assert!(!line.is_empty(), "Empty line, but test-file-lf does not contain empty lines");
         }
-        assert!(easy_reader.current_offset == easy_reader.file.metadata().unwrap().len() as usize, "After the \"while next-line\" iteration the offset should be at the EOF");
-        assert!(easy_reader.prev_line().unwrap().eq("EEEE EEEE"), "The first line from the EOF should be: EEEE EEEE");
+        assert!(easy_reader.current_end_line_offset == easy_reader.file_size, "After the \"while next-line\" iteration the offset should be at the EOF");
+        assert!(easy_reader.current_line().unwrap().eq("EEEE  EEEEE  EEEE  EEEEE"), "The first line from the EOF should be: EEEE  EEEEE  EEEE  EEEEE");
+        assert!(easy_reader.prev_line().unwrap().eq("DDDD  DDDDD DD DDD DDD DD"), "The second line from the EOF should be: DDDD  DDDDD DD DDD DDD DD");
 
         easy_reader.from_eof();
         while let Ok(line) = easy_reader.prev_line() {
             assert!(!line.is_empty(), "Empty line, but test-file-lf does not contain empty lines");
         }
-        assert!(easy_reader.current_offset == 0, "After the \"while prev-line\" iteration the offset should be at the BOF");
-        assert!(easy_reader.next_line().unwrap().eq("AAAA AAAA"), "The first line from the BOF should be: AAAA AAAA");
+        assert!(easy_reader.current_start_line_offset == 0, "After the \"while prev-line\" iteration the offset should be at the BOF");
+        assert!(easy_reader.current_line().unwrap().eq("AAAA AAAA"), "The first line from the BOF should be: AAAA AAAA");
+        assert!(easy_reader.next_line().unwrap().eq("B B BB BBB"), "The second line from the BOF should be: B B BB BBB");
+    }
+
+    #[test]
+    fn read_forward_1000_times() {
+        let now = Instant::now();
+
+        for _i in 0..1000 {
+            let file = File::open("resources/test-file-lf").unwrap();
+            let mut easy_reader = EasyReader::new(file).unwrap();
+            while let Ok(_line) = easy_reader.next_line() {}
+        }
+
+        let elapsed = duration_as_millis(now.elapsed());
+        println!("\nread_forward_10000_times: {}ms", elapsed);
+    }
+
+    #[test]
+    fn read_backward_1000_times() {
+        let now = Instant::now();
+
+        for _i in 0..1000 {
+            let file = File::open("resources/test-file-lf").unwrap();
+            let mut easy_reader = EasyReader::new(file).unwrap();
+            easy_reader.from_eof();
+            while let Ok(_line) = easy_reader.prev_line() {}
+        }
+
+        let elapsed = duration_as_millis(now.elapsed());
+        println!("\nread_backward_10000_times: {}ms", elapsed);
+    }
+
+    #[test]
+    fn read_10000_random_lines() {
+        let now = Instant::now();
+
+        let file = File::open("resources/test-file-lf").unwrap();
+        let mut easy_reader = EasyReader::new(file).unwrap();
+
+        for _i in 0..10000 {
+            easy_reader.random_line().unwrap();
+        }
+
+        let elapsed = duration_as_millis(now.elapsed());
+        println!("\nread_10000_random_lines: {}ms", elapsed);
     }
 }
