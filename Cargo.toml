@@ -10,3 +10,10 @@ readme="README.md"
 
 [dependencies]
 rand = "0.4.2"
+
+[dev-dependencies]
+criterion = "0.2"
+
+[[bench]]
+name = "benchmarks"
+harness = false

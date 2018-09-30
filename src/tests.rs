@@ -1,9 +1,4 @@
 use super::*;
-use std::time::{ Instant, Duration };
-
-fn duration_as_millis(d: Duration) -> f64 {
-    d.as_secs() as f64 * 1000. + d.subsec_nanos() as f64 / 1e6
-}
 
 #[test]
 fn test_empty_file() {
@@ -109,48 +104,4 @@ fn test_iterations() {
     assert!(easy_reader.current_start_line_offset == 0, "After the \"while prev-line\" iteration the offset should be at the BOF");
     assert!(easy_reader.current_line().unwrap().unwrap().eq("AAAA AAAA"), "The first line from the BOF should be: AAAA AAAA");
     assert!(easy_reader.next_line().unwrap().unwrap().eq("B B BB BBB"), "The second line from the BOF should be: B B BB BBB");
-}
-
-#[test]
-fn read_forward_1000_times() {
-    let now = Instant::now();
-
-    for _i in 0..1000 {
-        let file = File::open("resources/test-file-lf").unwrap();
-        let mut easy_reader = EasyReader::new(file).unwrap();
-        while let Ok(Some(_line)) = easy_reader.next_line() {}
-    }
-
-    let elapsed = duration_as_millis(now.elapsed());
-    println!("\nread_forward_10000_times: {}ms", elapsed);
-}
-
-#[test]
-fn read_backward_1000_times() {
-    let now = Instant::now();
-
-    for _i in 0..1000 {
-        let file = File::open("resources/test-file-lf").unwrap();
-        let mut easy_reader = EasyReader::new(file).unwrap();
-        easy_reader.from_eof();
-        while let Ok(Some(_line)) = easy_reader.prev_line() {}
-    }
-
-    let elapsed = duration_as_millis(now.elapsed());
-    println!("\nread_backward_10000_times: {}ms", elapsed);
-}
-
-#[test]
-fn read_10000_random_lines() {
-    let now = Instant::now();
-
-    let file = File::open("resources/test-file-lf").unwrap();
-    let mut easy_reader = EasyReader::new(file).unwrap();
-
-    for _i in 0..10000 {
-        easy_reader.random_line().unwrap().unwrap();
-    }
-
-    let elapsed = duration_as_millis(now.elapsed());
-    println!("\nread_10000_random_lines: {}ms", elapsed);
 }
