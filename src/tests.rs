@@ -105,3 +105,79 @@ fn test_iterations() {
     assert!(easy_reader.current_line().unwrap().unwrap().eq("AAAA AAAA"), "The first line from the BOF should be: AAAA AAAA");
     assert!(easy_reader.next_line().unwrap().unwrap().eq("B B BB BBB"), "The second line from the BOF should be: B B BB BBB");
 }
+
+#[test]
+fn test_indexed() {
+    let file = File::open("resources/test-file-lf").unwrap();
+    let mut easy_reader = EasyReader::new(file).unwrap();
+    easy_reader.build_index().unwrap();
+
+    easy_reader.from_eof();
+    assert!(easy_reader.prev_line().unwrap().unwrap().eq("EEEE  EEEEE  EEEE  EEEEE"), "[test-file-lf] The first line from the EOF should be: EEEE  EEEEE  EEEE  EEEEE");
+    assert!(easy_reader.prev_line().unwrap().unwrap().eq("DDDD  DDDDD DD DDD DDD DD"), "[test-file-lf] The second line from the EOF should be: DDDD  DDDDD DD DDD DDD DD");
+    assert!(easy_reader.prev_line().unwrap().unwrap().eq("CCCC  CCCCC"), "[test-file-lf] The third line from the EOF should be: CCCC  CCCCC");
+    assert!(easy_reader.current_line().unwrap().unwrap().eq("CCCC  CCCCC"), "[test-file-lf] The third line from the EOF should be: CCCC  CCCCC");
+    assert!(easy_reader.next_line().unwrap().unwrap().eq("DDDD  DDDDD DD DDD DDD DD"), "[test-file-lf] The second line from the EOF should be: DDDD  DDDDD DD DDD DDD DD");
+
+    easy_reader.from_bof();
+    assert!(easy_reader.next_line().unwrap().unwrap().eq("AAAA AAAA"), "[test-file-lf] The first line from the BOF should be: AAAA AAAA");
+    assert!(easy_reader.next_line().unwrap().unwrap().eq("B B BB BBB"), "[test-file-lf] The second line from the BOF should be: B B BB BBB");
+    assert!(easy_reader.next_line().unwrap().unwrap().eq("CCCC  CCCCC"), "[test-file-lf] The third line from the BOF should be: CCCC  CCCCC");
+    assert!(easy_reader.current_line().unwrap().unwrap().eq("CCCC  CCCCC"), "[test-file-lf] The third line from the EOF should be: CCCC  CCCCC");
+    assert!(easy_reader.prev_line().unwrap().unwrap().eq("B B BB BBB"), "[test-file-lf] The second line from the BOF should be: B B BB BBB");
+
+    let file = File::open("resources/test-file-crlf").unwrap();
+    let mut easy_reader = EasyReader::new(file).unwrap();
+    easy_reader.build_index().unwrap();
+
+    easy_reader.from_eof();
+    assert!(easy_reader.prev_line().unwrap().unwrap().eq("EEEE  EEEEE  EEEE  EEEEE"), "[test-file-crlf] The first line from the EOF should be: EEEE  EEEEE  EEEE  EEEEE");
+    assert!(easy_reader.prev_line().unwrap().unwrap().eq("DDDD  DDDDD DD DDD DDD DD"), "[test-file-crlf] The second line from the EOF should be: DDDD  DDDDD DD DDD DDD DD");
+    assert!(easy_reader.prev_line().unwrap().unwrap().eq("CCCC  CCCCC"), "[test-file-crlf] The third line from the EOF should be: CCCC  CCCCC");
+    assert!(easy_reader.current_line().unwrap().unwrap().eq("CCCC  CCCCC"), "[test-file-crlf] The third line from the EOF should be: CCCC  CCCCC");
+    assert!(easy_reader.next_line().unwrap().unwrap().eq("DDDD  DDDDD DD DDD DDD DD"), "[test-file-crlf] The second line from the EOF should be: DDDD  DDDDD DD DDD DDD DD");
+
+    easy_reader.from_bof();
+    assert!(easy_reader.next_line().unwrap().unwrap().eq("AAAA AAAA"), "[test-file-crlf] The first line from the BOF should be: AAAA AAAA");
+    assert!(easy_reader.next_line().unwrap().unwrap().eq("B B BB BBB"), "[test-file-crlf] The second line from the BOF should be: B B BB BBB");
+    assert!(easy_reader.next_line().unwrap().unwrap().eq("CCCC  CCCCC"), "[test-file-crlf] The third line from the BOF should be: CCCC  CCCCC");
+    assert!(easy_reader.current_line().unwrap().unwrap().eq("CCCC  CCCCC"), "[test-file-crlf] The third line from the EOF should be: CCCC  CCCCC");
+    assert!(easy_reader.prev_line().unwrap().unwrap().eq("B B BB BBB"), "[test-file-crlf] The second line from the BOF should be: B B BB BBB");
+
+    let file = File::open("resources/test-file-lf").unwrap();
+    let mut easy_reader = EasyReader::new(file).unwrap();
+    easy_reader.build_index().unwrap();
+
+    while let Ok(Some(line)) = easy_reader.next_line() {
+        assert!(!line.is_empty(), "Empty line, but test-file-lf does not contain empty lines");
+    }
+    assert!(easy_reader.current_end_line_offset == easy_reader.file_size, "After the \"while next-line\" iteration the offset should be at the EOF");
+    assert!(easy_reader.current_line().unwrap().unwrap().eq("EEEE  EEEEE  EEEE  EEEEE"), "The first line from the EOF should be: EEEE  EEEEE  EEEE  EEEEE");
+    assert!(easy_reader.prev_line().unwrap().unwrap().eq("DDDD  DDDDD DD DDD DDD DD"), "The second line from the EOF should be: DDDD  DDDDD DD DDD DDD DD");
+
+    easy_reader.from_eof();
+    while let Ok(Some(line)) = easy_reader.prev_line() {
+        assert!(!line.is_empty(), "Empty line, but test-file-lf does not contain empty lines");
+    }
+    assert!(easy_reader.current_start_line_offset == 0, "After the \"while prev-line\" iteration the offset should be at the BOF");
+    assert!(easy_reader.current_line().unwrap().unwrap().eq("AAAA AAAA"), "The first line from the BOF should be: AAAA AAAA");
+    assert!(easy_reader.next_line().unwrap().unwrap().eq("B B BB BBB"), "The second line from the BOF should be: B B BB BBB");
+
+    let file = File::open("resources/test-file-lf").unwrap();
+    let mut easy_reader = EasyReader::new(file).unwrap();
+    easy_reader.build_index().unwrap();
+
+    for _i in 0..100 {
+        let random_line = easy_reader.random_line().unwrap().unwrap();
+        assert!(!random_line.is_empty(), "Empty line, but test-file-lf does not contain empty lines");
+    }
+
+    let file = File::open("resources/test-file-crlf").unwrap();
+    let mut easy_reader = EasyReader::new(file).unwrap();
+    easy_reader.build_index().unwrap();
+
+    for _i in 0..100 {
+        let random_line = easy_reader.random_line().unwrap().unwrap();
+        assert!(!random_line.is_empty(), "Empty line, but test-file-crlf does not contain empty lines");
+    }
+}

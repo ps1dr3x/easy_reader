@@ -88,11 +88,12 @@ use std::{
         SeekFrom,
         ErrorKind
     },
-    fs::File
+    fs::File,
+    collections::HashMap
 };
 use rand::Rng;
 
-const CHUNK_SIZE: usize = 10;
+const CHUNK_SIZE: usize = 200;
 const CR_BYTE: u8 = '\r' as u8;
 const LF_BYTE: u8 = '\n' as u8;
 
@@ -108,7 +109,10 @@ pub struct EasyReader {
     file: File,
     file_size: usize,
     current_start_line_offset: usize,
-    current_end_line_offset: usize
+    current_end_line_offset: usize,
+    indexed: bool,
+    offsets_index: Vec<(usize, usize)>,
+    newline_map: HashMap<usize, usize>
 }
 
 impl EasyReader {
@@ -120,7 +124,10 @@ impl EasyReader {
             file: file,
             file_size: file_size,
             current_start_line_offset: 0,
-            current_end_line_offset: 0
+            current_end_line_offset: 0,
+            indexed: false,
+            offsets_index: Vec::new(),
+            newline_map: HashMap::new()
         })
     }
 
@@ -134,6 +141,15 @@ impl EasyReader {
         self.current_start_line_offset = self.file_size;
         self.current_end_line_offset = self.file_size;
         self
+    }
+
+    pub fn build_index(&mut self) -> io::Result<&mut EasyReader> {
+        while let Ok(Some(_line)) = self.next_line() {
+            self.offsets_index.push((self.current_start_line_offset, self.current_end_line_offset));
+            self.newline_map.insert(self.current_start_line_offset, self.offsets_index.len() - 1);
+        }
+        self.indexed = true;
+        Ok(self)
     }
 
     pub fn prev_line(&mut self) -> io::Result<Option<String>> {
@@ -156,7 +172,15 @@ impl EasyReader {
         match mode {
             ReadMode::Prev => {
                 if self.current_start_line_offset == 0 { return Ok(None) }
-                self.current_end_line_offset = self.current_start_line_offset;
+
+                if self.indexed && self.current_start_line_offset < self.file_size {
+                    let current_line = self.newline_map.get(&self.current_start_line_offset).unwrap().clone();
+                    self.current_start_line_offset = self.offsets_index[current_line - 1].0;
+                    self.current_end_line_offset = self.offsets_index[current_line - 1].1;
+                    return self.read_line(ReadMode::Current);
+                } else {
+                    self.current_end_line_offset = self.current_start_line_offset;
+                }
             },
             ReadMode::Current => {
                 if self.current_start_line_offset == self.current_end_line_offset {
@@ -170,10 +194,25 @@ impl EasyReader {
             },
             ReadMode::Next => {
                 if self.current_end_line_offset == self.file_size { return Ok(None) }
-                self.current_start_line_offset = self.current_end_line_offset;
+
+                if self.indexed && self.current_start_line_offset > 0 {
+                    let current_line = self.newline_map.get(&self.current_start_line_offset).unwrap().clone();
+                    self.current_start_line_offset = self.offsets_index[current_line + 1].0;
+                    self.current_end_line_offset = self.offsets_index[current_line + 1].1;
+                    return self.read_line(ReadMode::Current);
+                } else {
+                    self.current_start_line_offset = self.current_end_line_offset;
+                }
             },
             ReadMode::Random => {
-                self.current_start_line_offset = rand::thread_rng().gen_range(0, self.file_size);
+                if self.indexed {
+                    let rnd_idx = rand::thread_rng().gen_range(0, self.offsets_index.len() - 1);
+                    self.current_start_line_offset = self.offsets_index[rnd_idx].0;
+                    self.current_end_line_offset = self.offsets_index[rnd_idx].1;
+                    return self.read_line(ReadMode::Current);
+                } else {
+                    self.current_start_line_offset = rand::thread_rng().gen_range(0, self.file_size);
+                }
             }
         }
 
