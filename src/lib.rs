@@ -292,10 +292,6 @@ impl EasyReader {
                     let mut chunk = self.read_chunk(new_start_line_offset)?;
 
                     for i in 0..CHUNK_SIZE {
-                        if new_start_line_offset >= self.file_size - 1 {
-                            return Err(Error::new(ErrorKind::UnexpectedEof, "EOF reached"))
-                        }
-
                         if chunk[i] == LF_BYTE {
                             found = true;
                         }
