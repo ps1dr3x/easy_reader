@@ -10,6 +10,7 @@ readme="README.md"
 
 [dependencies]
 rand = "0.4.2"
+fnv = "1.0.3"
 
 [dev-dependencies]
 criterion = "0.2"
