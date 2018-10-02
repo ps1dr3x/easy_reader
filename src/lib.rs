@@ -94,7 +94,6 @@ use std::{
 use rand::Rng;
 use fnv::FnvHashMap;
 
-const CHUNK_SIZE: usize = 200;
 const CR_BYTE: u8 = '\r' as u8;
 const LF_BYTE: u8 = '\n' as u8;
 
@@ -109,6 +108,7 @@ enum ReadMode {
 pub struct EasyReader {
     file: File,
     file_size: usize,
+    chunk_size: usize,
     current_start_line_offset: usize,
     current_end_line_offset: usize,
     indexed: bool,
@@ -124,12 +124,18 @@ impl EasyReader {
         Ok(EasyReader {
             file: file,
             file_size: file_size,
+            chunk_size: 200,
             current_start_line_offset: 0,
             current_end_line_offset: 0,
             indexed: false,
             offsets_index: Vec::new(),
             newline_map: FnvHashMap::default()
         })
+    }
+
+    pub fn chunk_size(&mut self, size: usize) -> &mut EasyReader {
+        self.chunk_size = size;
+        self
     }
 
     pub fn from_bof(&mut self) -> &mut EasyReader {
@@ -254,18 +260,18 @@ impl EasyReader {
                 ReadMode::Prev | ReadMode::Random => {
                     let mut margin = 0;
                     let from = {
-                        if new_start_line_offset < CHUNK_SIZE {
-                            margin = CHUNK_SIZE - new_start_line_offset;
+                        if new_start_line_offset < self.chunk_size {
+                            margin = self.chunk_size - new_start_line_offset;
                             0
                         } else {
-                            new_start_line_offset - CHUNK_SIZE
+                            new_start_line_offset - self.chunk_size
                         }
                     };
 
                     let mut chunk = self.read_chunk(from)?;
                     chunk.reverse();
 
-                    for i in 0..CHUNK_SIZE {
+                    for i in 0..self.chunk_size {
                         if i < margin { continue; }
                         if new_start_line_offset == 0 {
                             found = true;
@@ -292,7 +298,7 @@ impl EasyReader {
                 ReadMode::Next => {
                     let mut chunk = self.read_chunk(new_start_line_offset)?;
 
-                    for i in 0..CHUNK_SIZE {
+                    for i in 0..self.chunk_size {
                         if chunk[i] == LF_BYTE {
                             found = true;
                         }
@@ -319,7 +325,7 @@ impl EasyReader {
             let chunk = self.read_chunk(new_end_line_offset)?;
 
             let mut found = false;
-            for i in 0..CHUNK_SIZE {
+            for i in 0..self.chunk_size {
                 if new_end_line_offset == self.file_size {
                     found = true;
                     break;
@@ -349,11 +355,9 @@ impl EasyReader {
         Ok(new_end_line_offset)
     }
 
-    fn read_chunk(&mut self, offset: usize) -> io::Result<[u8; CHUNK_SIZE]> {
-        let mut buffer: [u8; CHUNK_SIZE] = [0; CHUNK_SIZE];
-        self.file.seek(SeekFrom::Start(offset as u64))?;
-        self.file.read(&mut buffer)?;
-        Ok(buffer)
+    fn read_chunk(&mut self, offset: usize) -> io::Result<Vec<u8>> {
+        let chunk_size = self.chunk_size;
+        self.read_bytes(offset, chunk_size)
     }
 
     fn read_bytes(&mut self, offset: usize, bytes: usize) -> io::Result<Vec<u8>> {
