@@ -79,6 +79,7 @@
 //! ```
 
 extern crate rand;
+extern crate fnv;
 
 use std::{
     io::{
@@ -88,10 +89,10 @@ use std::{
         SeekFrom,
         ErrorKind
     },
-    fs::File,
-    collections::HashMap
+    fs::File
 };
 use rand::Rng;
+use fnv::FnvHashMap;
 
 const CHUNK_SIZE: usize = 200;
 const CR_BYTE: u8 = '\r' as u8;
@@ -112,7 +113,7 @@ pub struct EasyReader {
     current_end_line_offset: usize,
     indexed: bool,
     offsets_index: Vec<(usize, usize)>,
-    newline_map: HashMap<usize, usize>
+    newline_map: FnvHashMap<usize, usize>
 }
 
 impl EasyReader {
@@ -127,7 +128,7 @@ impl EasyReader {
             current_end_line_offset: 0,
             indexed: false,
             offsets_index: Vec::new(),
-            newline_map: HashMap::new()
+            newline_map: FnvHashMap::default()
         })
     }
 
@@ -174,7 +175,7 @@ impl EasyReader {
                 if self.current_start_line_offset == 0 { return Ok(None) }
 
                 if self.indexed && self.current_start_line_offset < self.file_size {
-                    let current_line = self.newline_map.get(&self.current_start_line_offset).unwrap().clone();
+                    let current_line = *self.newline_map.get(&self.current_start_line_offset).unwrap();
                     self.current_start_line_offset = self.offsets_index[current_line - 1].0;
                     self.current_end_line_offset = self.offsets_index[current_line - 1].1;
                     return self.read_line(ReadMode::Current);
@@ -196,7 +197,7 @@ impl EasyReader {
                 if self.current_end_line_offset == self.file_size { return Ok(None) }
 
                 if self.indexed && self.current_start_line_offset > 0 {
-                    let current_line = self.newline_map.get(&self.current_start_line_offset).unwrap().clone();
+                    let current_line = *self.newline_map.get(&self.current_start_line_offset).unwrap();
                     self.current_start_line_offset = self.offsets_index[current_line + 1].0;
                     self.current_end_line_offset = self.offsets_index[current_line + 1].1;
                     return self.read_line(ReadMode::Current);
