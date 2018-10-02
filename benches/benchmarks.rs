@@ -2,13 +2,7 @@
 extern crate criterion;
 extern crate easy_reader;
 
-use std::{
-    fs::File,
-    io::{
-        BufReader,
-        BufRead
-    }
-};
+use std::fs::File;
 use criterion::Criterion;
 use easy_reader::EasyReader;
 
@@ -59,17 +53,6 @@ fn criterion_benchmark(c: &mut Criterion) {
             let file = File::open("resources/fatty_lipsum_lf").unwrap();
             let mut easy_reader = EasyReader::new(file).unwrap();
             while let Ok(Some(_line)) = easy_reader.prev_line() {}
-        }),
-    );
-
-    c.bench_function(
-        "Read forward [BufReader]",
-        |b| b.iter(|| {
-            let f = File::open("resources/fatty_lipsum_lf").unwrap();
-            let reader = BufReader::new(&f);
-            for line in reader.lines() {
-                line.unwrap();
-            }
         }),
     );
 
