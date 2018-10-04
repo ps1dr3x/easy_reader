@@ -1,4 +1,5 @@
 use super::*;
+use std::fs::File;
 
 #[test]
 fn test_empty_file() {
