@@ -92,15 +92,12 @@
 extern crate rand;
 extern crate fnv;
 
-use std::{
-    io::{
-        self,
-        prelude::*,
-        Error,
-        SeekFrom,
-        ErrorKind
-    },
-    fs::File
+use std::io::{
+    self,
+    prelude::*,
+    Error,
+    SeekFrom,
+    ErrorKind
 };
 use rand::Rng;
 use fnv::FnvHashMap;
@@ -116,8 +113,8 @@ enum ReadMode {
     Random
 }
 
-pub struct EasyReader {
-    file: File,
+pub struct EasyReader<R> {
+    file: R,
     file_size: usize,
     chunk_size: usize,
     current_start_line_offset: usize,
@@ -127,14 +124,18 @@ pub struct EasyReader {
     newline_map: FnvHashMap<usize, usize>
 }
 
-impl EasyReader {
-    pub fn new(file: File) -> Result<EasyReader, Error> {
-        let file_size = file.metadata()?.len() as usize;
+impl<R: Read + Seek> EasyReader<R> {
+    pub fn new(mut file: R) -> Result<Self, Error> {
+        let file_size = file.seek(SeekFrom::End(0))?;
         if file_size == 0 { return Err(Error::new(ErrorKind::UnexpectedEof, "Empty file")) }
+        if file_size > usize::max_value() as u64 {
+            // TODO: Use u64 for files/offsets
+            return Err(Error::new(ErrorKind::InvalidData, "File too large"));
+        }
 
         Ok(EasyReader {
             file: file,
-            file_size: file_size,
+            file_size: file_size as usize,
             chunk_size: 200,
             current_start_line_offset: 0,
             current_end_line_offset: 0,
@@ -144,24 +145,24 @@ impl EasyReader {
         })
     }
 
-    pub fn chunk_size(&mut self, size: usize) -> &mut EasyReader {
+    pub fn chunk_size(&mut self, size: usize) -> &mut Self {
         self.chunk_size = size;
         self
     }
 
-    pub fn from_bof(&mut self) -> &mut EasyReader {
+    pub fn from_bof(&mut self) -> &mut Self {
         self.current_start_line_offset = 0;
         self.current_end_line_offset = 0;
         self
     }
 
-    pub fn from_eof(&mut self) -> &mut EasyReader {
+    pub fn from_eof(&mut self) -> &mut Self {
         self.current_start_line_offset = self.file_size;
         self.current_end_line_offset = self.file_size;
         self
     }
 
-    pub fn build_index(&mut self) -> io::Result<&mut EasyReader> {
+    pub fn build_index(&mut self) -> io::Result<&mut Self> {
         while let Ok(Some(_line)) = self.next_line() {
             self.offsets_index.push((self.current_start_line_offset, self.current_end_line_offset));
             self.newline_map.insert(self.current_start_line_offset, self.offsets_index.len() - 1);
