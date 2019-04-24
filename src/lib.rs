@@ -115,10 +115,10 @@ enum ReadMode {
 
 pub struct EasyReader<R> {
     file: R,
-    file_size: usize,
+    file_size: u64,
     chunk_size: usize,
-    current_start_line_offset: usize,
-    current_end_line_offset: usize,
+    current_start_line_offset: u64,
+    current_end_line_offset: u64,
     indexed: bool,
     offsets_index: Vec<(usize, usize)>,
     newline_map: FnvHashMap<usize, usize>
@@ -128,14 +128,10 @@ impl<R: Read + Seek> EasyReader<R> {
     pub fn new(mut file: R) -> Result<Self, Error> {
         let file_size = file.seek(SeekFrom::End(0))?;
         if file_size == 0 { return Err(Error::new(ErrorKind::UnexpectedEof, "Empty file")) }
-        if file_size > usize::max_value() as u64 {
-            // TODO: Use u64 for files/offsets
-            return Err(Error::new(ErrorKind::InvalidData, "File too large"));
-        }
 
         Ok(EasyReader {
             file: file,
-            file_size: file_size as usize,
+            file_size,
             chunk_size: 200,
             current_start_line_offset: 0,
             current_end_line_offset: 0,
@@ -163,9 +159,17 @@ impl<R: Read + Seek> EasyReader<R> {
     }
 
     pub fn build_index(&mut self) -> io::Result<&mut Self> {
+        if self.file_size > usize::max_value() as u64 {
+            // 32bit ¯\_(ツ)_/¯
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "File too large to build an index")
+            );
+        }
+
         while let Ok(Some(_line)) = self.next_line() {
-            self.offsets_index.push((self.current_start_line_offset, self.current_end_line_offset));
-            self.newline_map.insert(self.current_start_line_offset, self.offsets_index.len() - 1);
+            self.offsets_index.push((self.current_start_line_offset as usize, self.current_end_line_offset as usize));
+            self.newline_map.insert(self.current_start_line_offset as usize, self.offsets_index.len() - 1);
         }
         self.indexed = true;
         Ok(self)
@@ -193,9 +197,9 @@ impl<R: Read + Seek> EasyReader<R> {
                 if self.current_start_line_offset == 0 { return Ok(None) }
 
                 if self.indexed && self.current_start_line_offset < self.file_size {
-                    let current_line = *self.newline_map.get(&self.current_start_line_offset).unwrap();
-                    self.current_start_line_offset = self.offsets_index[current_line - 1].0;
-                    self.current_end_line_offset = self.offsets_index[current_line - 1].1;
+                    let current_line = *self.newline_map.get(&(self.current_start_line_offset as usize)).unwrap();
+                    self.current_start_line_offset = self.offsets_index[current_line - 1].0 as u64;
+                    self.current_end_line_offset = self.offsets_index[current_line - 1].1 as u64;
                     return self.read_line(ReadMode::Current);
                 } else {
                     self.current_end_line_offset = self.current_start_line_offset;
@@ -204,10 +208,10 @@ impl<R: Read + Seek> EasyReader<R> {
             ReadMode::Current => {
                 if self.current_start_line_offset == self.current_end_line_offset {
                     if self.current_start_line_offset == self.file_size {
-                        self.current_start_line_offset = self.find_start_line(ReadMode::Prev)?;
+                        self.current_start_line_offset = self.find_start_line(ReadMode::Prev)? as u64;
                     }
                     if self.current_end_line_offset == 0 {
-                        self.current_end_line_offset = self.find_end_line()?;
+                        self.current_end_line_offset = self.find_end_line()? as u64;
                     }
                 }
             },
@@ -215,9 +219,9 @@ impl<R: Read + Seek> EasyReader<R> {
                 if self.current_end_line_offset == self.file_size { return Ok(None) }
 
                 if self.indexed && self.current_start_line_offset > 0 {
-                    let current_line = *self.newline_map.get(&self.current_start_line_offset).unwrap();
-                    self.current_start_line_offset = self.offsets_index[current_line + 1].0;
-                    self.current_end_line_offset = self.offsets_index[current_line + 1].1;
+                    let current_line = *self.newline_map.get(&(self.current_start_line_offset as usize)).unwrap();
+                    self.current_start_line_offset = self.offsets_index[current_line + 1].0 as u64;
+                    self.current_end_line_offset = self.offsets_index[current_line + 1].1 as u64;
                     return self.read_line(ReadMode::Current);
                 } else {
                     self.current_start_line_offset = self.current_end_line_offset;
@@ -226,8 +230,8 @@ impl<R: Read + Seek> EasyReader<R> {
             ReadMode::Random => {
                 if self.indexed {
                     let rnd_idx = rand::thread_rng().gen_range(0, self.offsets_index.len() - 1);
-                    self.current_start_line_offset = self.offsets_index[rnd_idx].0;
-                    self.current_end_line_offset = self.offsets_index[rnd_idx].1;
+                    self.current_start_line_offset = self.offsets_index[rnd_idx].0 as u64;
+                    self.current_end_line_offset = self.offsets_index[rnd_idx].1 as u64;
                     return self.read_line(ReadMode::Current);
                 } else {
                     self.current_start_line_offset = rand::thread_rng().gen_range(0, self.file_size);
@@ -242,7 +246,7 @@ impl<R: Read + Seek> EasyReader<R> {
 
         let offset = self.current_start_line_offset;
         let line_length = self.current_end_line_offset - self.current_start_line_offset;
-        let buffer = self.read_bytes(offset, line_length)?;
+        let buffer = self.read_bytes(offset, line_length as usize)?;
 
         let line = String::from_utf8(buffer)
             .map_err(|err| {
@@ -260,7 +264,7 @@ impl<R: Read + Seek> EasyReader<R> {
         Ok(Some(line))
     }
 
-    fn find_start_line(&mut self, mode: ReadMode) -> io::Result<usize> {
+    fn find_start_line(&mut self, mode: ReadMode) -> io::Result<u64> {
         let mut new_start_line_offset = self.current_start_line_offset;
 
         let mut n_chunks = 0;
@@ -272,11 +276,11 @@ impl<R: Read + Seek> EasyReader<R> {
                 ReadMode::Prev | ReadMode::Random => {
                     let mut margin = 0;
                     let from = {
-                        if new_start_line_offset < self.chunk_size {
-                            margin = self.chunk_size - new_start_line_offset;
+                        if new_start_line_offset < (self.chunk_size as u64) {
+                            margin = self.chunk_size - (new_start_line_offset as usize);
                             0
                         } else {
-                            new_start_line_offset - self.chunk_size
+                            new_start_line_offset - (self.chunk_size as u64)
                         }
                     };
 
@@ -289,10 +293,10 @@ impl<R: Read + Seek> EasyReader<R> {
                             found = true;
                             break;
                         } else {
-                            if n_chunks == 0 &&
-                              self.current_start_line_offset == new_start_line_offset &&
-                              mode != ReadMode::Random {
-                                // We've not moved yet
+                            if n_chunks == 0
+                            && self.current_start_line_offset == new_start_line_offset
+                            && mode != ReadMode::Random {
+                                // Not moved yet
                                 new_start_line_offset -= 1;
                                 continue;
                             }
@@ -328,7 +332,7 @@ impl<R: Read + Seek> EasyReader<R> {
         Ok(new_start_line_offset)
     }
 
-    fn find_end_line(&mut self) -> io::Result<usize> {
+    fn find_end_line(&mut self) -> io::Result<u64> {
         let mut new_end_line_offset = self.current_start_line_offset;
 
         loop {
@@ -367,12 +371,12 @@ impl<R: Read + Seek> EasyReader<R> {
         Ok(new_end_line_offset)
     }
 
-    fn read_chunk(&mut self, offset: usize) -> io::Result<Vec<u8>> {
+    fn read_chunk(&mut self, offset: u64) -> io::Result<Vec<u8>> {
         let chunk_size = self.chunk_size;
         self.read_bytes(offset, chunk_size)
     }
 
-    fn read_bytes(&mut self, offset: usize, bytes: usize) -> io::Result<Vec<u8>> {
+    fn read_bytes(&mut self, offset: u64, bytes: usize) -> io::Result<Vec<u8>> {
         let mut buffer = vec![0; bytes];
         self.file.seek(SeekFrom::Start(offset as u64))?;
         self.file.read(&mut buffer[..])?;
