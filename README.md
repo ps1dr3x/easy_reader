@@ -18,8 +18,6 @@ By the way, it's not advisable to generate the index for very large files, as an
 ### Example: basic usage
 
 ```rust
-extern crate easy_reader;
-
 use easy_reader::EasyReader;
 use std::{
     fs::File,
@@ -43,16 +41,16 @@ fn easy() -> Result<(), Error> {
     println!("Random line: {}", reader.random_line()?.unwrap());
 
     // Iteration through the entire file (reverse)
-    reader.from_eof();
+    reader.eof();
     while let Some(line) = reader.prev_line()? {
         println!("{}", line);
     }
 
     // You can always start/restart reading from the end of file (EOF)
-    reader.from_eof();
+    reader.eof();
     println!("Last line: {}", reader.prev_line()?.unwrap());
     // Or the begin of file (BOF)
-    reader.from_bof();
+    reader.bof();
     println!("First line: {}", reader.next_line()?.unwrap());
 
     Ok(())
@@ -62,8 +60,6 @@ fn easy() -> Result<(), Error> {
 ### Example: read random lines endlessly
 
 ```rust
-extern crate easy_reader;
-
 use easy_reader::EasyReader;
 use std::{
     fs::File,

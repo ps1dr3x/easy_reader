@@ -1,19 +1,20 @@
 [package]
 name = "easy_reader"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Michele Federici (@ps1dr3x) <michele@federici.tech>"]
 description = "Move forward, backward or randomly through the lines of huge files. Easily and fastly."
 repository = "https://github.com/ps1dr3x/easy_reader"
 license = "Apache-2.0"
 keywords = ["lines", "reader", "reverse", "backwards", "random"]
-readme="README.md"
+readme = "README.md"
+edition = "2018"
 
 [dependencies]
-rand = "0.4.2"
-fnv = "1.0.3"
+rand = "~0.6"
+fnv = "~1.0"
 
 [dev-dependencies]
-criterion = "0.2"
+criterion = "~0.2"
 
 [[bench]]
 name = "benchmarks"

@@ -21,8 +21,6 @@
 //! ### Example: basic usage
 //!
 //! ```rust
-//! extern crate easy_reader;
-//!
 //! use easy_reader::EasyReader;
 //! use std::{
 //!     fs::File,
@@ -46,16 +44,16 @@
 //!     println!("Random line: {}", reader.random_line()?.unwrap());
 //!
 //!     // Iteration through the entire file (reverse)
-//!     reader.from_eof();
+//!     reader.eof();
 //!     while let Some(line) = reader.prev_line()? {
 //!         println!("{}", line);
 //!     }
 //! 
 //!     // You can always start/restart reading from the end of file (EOF)
-//!     reader.from_eof();
+//!     reader.eof();
 //!     println!("Last line: {}", reader.prev_line()?.unwrap());
 //!     // Or the begin of file (BOF)
-//!     reader.from_bof();
+//!     reader.bof();
 //!     println!("First line: {}", reader.next_line()?.unwrap());
 //! 
 //!     Ok(())
@@ -65,8 +63,6 @@
 //! ### Example: read random lines endlessly
 //! 
 //! ```no_run
-//! extern crate easy_reader;
-//!
 //! use easy_reader::EasyReader;
 //! use std::{
 //!     fs::File,
@@ -89,9 +85,6 @@
 //! }
 //! ```
 
-extern crate rand;
-extern crate fnv;
-
 use std::io::{
     self,
     prelude::*,
@@ -102,8 +95,8 @@ use std::io::{
 use rand::Rng;
 use fnv::FnvHashMap;
 
-const CR_BYTE: u8 = '\r' as u8;
-const LF_BYTE: u8 = '\n' as u8;
+const CR_BYTE: u8 = b'\r';
+const LF_BYTE: u8 = b'\n';
 
 #[derive(Clone, PartialEq)]
 enum ReadMode {
@@ -130,7 +123,7 @@ impl<R: Read + Seek> EasyReader<R> {
         if file_size == 0 { return Err(Error::new(ErrorKind::UnexpectedEof, "Empty file")) }
 
         Ok(EasyReader {
-            file: file,
+            file,
             file_size,
             chunk_size: 200,
             current_start_line_offset: 0,
@@ -146,13 +139,13 @@ impl<R: Read + Seek> EasyReader<R> {
         self
     }
 
-    pub fn from_bof(&mut self) -> &mut Self {
+    pub fn bof(&mut self) -> &mut Self {
         self.current_start_line_offset = 0;
         self.current_end_line_offset = 0;
         self
     }
 
-    pub fn from_eof(&mut self) -> &mut Self {
+    pub fn eof(&mut self) -> &mut Self {
         self.current_start_line_offset = self.file_size;
         self.current_end_line_offset = self.file_size;
         self
@@ -287,7 +280,7 @@ impl<R: Read + Seek> EasyReader<R> {
                     let mut chunk = self.read_chunk(from)?;
                     chunk.reverse();
 
-                    for i in 0..self.chunk_size {
+                    for (i, chunk_el) in chunk.iter().enumerate().take(self.chunk_size) {
                         if i < margin { continue; }
                         if new_start_line_offset == 0 {
                             found = true;
@@ -301,7 +294,7 @@ impl<R: Read + Seek> EasyReader<R> {
                                 continue;
                             }
 
-                            if chunk[i] == LF_BYTE {
+                            if *chunk_el == LF_BYTE {
                                 found = true;
                             }
                         }
@@ -312,10 +305,10 @@ impl<R: Read + Seek> EasyReader<R> {
                 },
                 ReadMode::Current => (),
                 ReadMode::Next => {
-                    let mut chunk = self.read_chunk(new_start_line_offset)?;
+                    let chunk = self.read_chunk(new_start_line_offset)?;
 
-                    for i in 0..self.chunk_size {
-                        if chunk[i] == LF_BYTE {
+                    for chunk_el in chunk.iter().take(self.chunk_size) {
+                        if *chunk_el == LF_BYTE {
                             found = true;
                         }
 
@@ -351,12 +344,10 @@ impl<R: Read + Seek> EasyReader<R> {
                         if chunk[i - 1] == CR_BYTE {
                             new_end_line_offset -= 1;
                         }
-                    } else {
-                        if new_end_line_offset < self.file_size {
-                            let next_byte = self.read_bytes(new_end_line_offset - 1, 1)?[0];
-                            if next_byte == CR_BYTE {
-                                new_end_line_offset -= 1;
-                            }
+                    } else if new_end_line_offset < self.file_size {
+                        let next_byte = self.read_bytes(new_end_line_offset - 1, 1)?[0];
+                        if next_byte == CR_BYTE {
+                            new_end_line_offset -= 1;
                         }
                     }
                     found = true;
@@ -379,7 +370,7 @@ impl<R: Read + Seek> EasyReader<R> {
     fn read_bytes(&mut self, offset: u64, bytes: usize) -> io::Result<Vec<u8>> {
         let mut buffer = vec![0; bytes];
         self.file.seek(SeekFrom::Start(offset as u64))?;
-        self.file.read(&mut buffer[..])?;
+        self.file.read(&mut buffer)?;
         Ok(buffer)
     }
 }

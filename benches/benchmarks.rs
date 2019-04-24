@@ -42,7 +42,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function(
         "Read backward [1000][index]",
         move |b| b.iter(|| {
-            reader.from_eof();
+            reader.eof();
             while let Ok(Some(_line)) = reader.prev_line() {}
         }),
     );
@@ -63,7 +63,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         "Read forward [EasyReader][index]",
         move |b| b.iter(|| {
             while let Ok(Some(_line)) = reader.next_line() {}
-            reader.from_bof();
+            reader.bof();
         }),
     );
 
