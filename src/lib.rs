@@ -30,7 +30,7 @@
 //!     }
 //! };
 //!
-//! fn easy() -> Result<(), Error> {
+//! fn navigate() -> Result<(), Error> {
 //!     let file = File::open("resources/test-file-lf")?;
 //!     let mut reader = EasyReader::new(file)?;
 //!
@@ -73,7 +73,7 @@
 //!     }
 //! };
 //!
-//! fn easy() -> Result<(), Error> {
+//! fn navigate_forever() -> Result<(), Error> {
 //!     let file = File::open("resources/test-file-lf")?;
 //!     let mut reader = EasyReader::new(file)?;
 //!
@@ -242,13 +242,13 @@ impl<R: Read + Seek> EasyReader<R> {
             #[cfg(feature = "rand")]
             ReadMode::Random => {
                 if self.indexed {
-                    let rnd_idx = rand::thread_rng().gen_range(0, self.offsets_index.len() - 1);
+                    let rnd_idx = rand::thread_rng().gen_range(0..self.offsets_index.len() - 1);
                     self.current_start_line_offset = self.offsets_index[rnd_idx].0 as u64;
                     self.current_end_line_offset = self.offsets_index[rnd_idx].1 as u64;
                     return self.read_line(ReadMode::Current);
                 } else {
                     self.current_start_line_offset =
-                        rand::thread_rng().gen_range(0, self.file_size);
+                        rand::thread_rng().gen_range(0..self.file_size);
                 }
             }
         }

@@ -3,7 +3,7 @@
 [![Build Status](https://travis-ci.org/ps1dr3x/easy_reader.svg?branch=master)](https://travis-ci.org/ps1dr3x/easy_reader)
 [![Latest Version](https://img.shields.io/crates/v/easy_reader.svg)](https://crates.io/crates/easy_reader)
 [![Documentation](https://docs.rs/easy_reader/badge.svg)](https://docs.rs/easy_reader)
-[![Rustc Version](https://img.shields.io/badge/rustc-1.25+-green.svg)](https://blog.rust-lang.org/2018/03/29/Rust-1.25.html)
+[![Rustc Version](https://img.shields.io/badge/rustc-1.52+-green.svg)](https://rust-lang.org/)
 
 The main goal of this library is to allow long navigations through the lines of large files, freely moving forwards and backwards or getting random lines without having to consume an iterator.
 
@@ -27,7 +27,7 @@ use std::{
     }
 };
 
-fn easy() -> Result<(), Error> {
+fn navigate() -> Result<(), Error> {
     let file = File::open("resources/test-file-lf")?;
     let mut reader = EasyReader::new(file)?;
 
@@ -69,7 +69,7 @@ use std::{
     }
 };
 
-fn easy() -> Result<(), Error> {
+fn navigate_forever() -> Result<(), Error> {
     let file = File::open("resources/test-file-lf")?;
     let mut reader = EasyReader::new(file)?;
 
