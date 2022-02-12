@@ -461,5 +461,17 @@ fn test_file_with_blank_line_at_the_beginning() {
     let mut reader = EasyReader::new(file).unwrap();
     reader.eof();
 
-    while let Some(_line) = reader.prev_line().unwrap() {}
+    assert_eq!(
+        reader.prev_line().unwrap().unwrap(),
+        "Blank line above!".to_string(),
+        "The last line should be: Blank line above!",
+    );
+    assert!(
+        reader.prev_line().unwrap().unwrap().is_empty(),
+        "The blank line at the BOF should be empty"
+    );
+    assert!(
+        reader.prev_line().unwrap().is_none(),
+        "The file should only have two lines"
+    );
 }
