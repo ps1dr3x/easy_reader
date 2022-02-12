@@ -254,7 +254,7 @@ impl<R: Read + Seek> EasyReader<R> {
         }
 
         if mode != ReadMode::Current {
-            self.current_start_line_offset = self.find_start_line(mode.clone())?;
+            self.current_start_line_offset = self.find_start_line(mode)?;
             self.current_end_line_offset = self.find_end_line()?;
         }
 
@@ -416,7 +416,7 @@ impl<R: Read + Seek> EasyReader<R> {
     fn read_bytes(&mut self, offset: u64, bytes: usize) -> io::Result<Vec<u8>> {
         let mut buffer = vec![0; bytes];
         self.file.seek(SeekFrom::Start(offset as u64))?;
-        self.file.read(&mut buffer)?;
+        let _ = self.file.read(&mut buffer)?;
         Ok(buffer)
     }
 }
