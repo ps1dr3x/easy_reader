@@ -388,7 +388,7 @@ impl<R: Read + Seek> EasyReader<R> {
                         if chunk[i - 1] == CR_BYTE {
                             new_end_line_offset -= 1;
                         }
-                    } else if new_end_line_offset < self.file_size {
+                    } else if new_end_line_offset < self.file_size && new_end_line_offset > 0 {
                         let next_byte = self.read_bytes(new_end_line_offset - 1, 1)?[0];
                         if next_byte == CR_BYTE {
                             new_end_line_offset -= 1;
