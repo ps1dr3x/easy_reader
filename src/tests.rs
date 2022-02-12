@@ -454,3 +454,12 @@ fn test_indexed() {
         );
     }
 }
+
+#[test]
+fn test_file_with_blank_line_at_the_beginning() {
+    let file = File::open("resources/file-with-blank-line-at-the-beginning").unwrap();
+    let mut reader = EasyReader::new(file).unwrap();
+    reader.eof();
+
+    while let Some(_line) = reader.prev_line().unwrap() {}
+}
